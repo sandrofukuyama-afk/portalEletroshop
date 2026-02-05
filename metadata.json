@@ -1,0 +1,7 @@
+{
+  "name": "Casa Blanca Launcher",
+  "description": "Launcher de sistemas PDV para a Casa Blanca Eletroshop, otimizado para iPad.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
