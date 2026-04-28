@@ -6,7 +6,10 @@ import {
   ShieldCheck, 
   RefreshCcw, 
   MonitorPlay,
-  Clock
+  Clock,
+  Tv,
+  ShoppingCart,
+  Share2
 } from 'lucide-react';
 import { SystemButton } from './types';
 import LauncherButton from './components/LauncherButton';
@@ -53,8 +56,28 @@ const App: React.FC = () => {
       name: 'TV Assinatura',
       url: 'https://tv-assinatura-manager-090b4fa3.base44.app',
       description: 'Planos • Clientes • Pagamentos',
-      icon: <MonitorPlay className="w-12 h-12 text-red-400" />,
-      fullWidth: true
+      icon: <MonitorPlay className="w-12 h-12 text-red-400" />
+    },
+    {
+      id: 'signage',
+      name: 'Digital Signage Pro',
+      url: 'https://digitalsignagepro.vercel.app',
+      description: 'Gestão de Telas • Mídia',
+      icon: <Tv className="w-12 h-12 text-cyan-400" />
+    },
+    {
+      id: 'site',
+      name: 'Eletroshop Site',
+      url: 'https://eletroshopjp.net',
+      description: 'E-commerce • Loja Online',
+      icon: <ShoppingCart className="w-12 h-12 text-yellow-400" />
+    },
+    {
+      id: 'social',
+      name: 'Social Media',
+      url: 'https://social-media2026.vercel.app',
+      description: 'Gestão de Redes Sociais • Posts',
+      icon: <Share2 className="w-12 h-12 text-pink-400" />
     }
   ];
 
