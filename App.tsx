@@ -22,6 +22,29 @@ const App: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
+  const hardRefresh = async () => {
+    // Tenta limpar service workers
+    if ('serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
+        }
+      } catch (e) {
+        console.error('SW unregister failed', e);
+      }
+    }
+    
+    // Força o reload ignorando o cache
+    // @ts-ignore - reload(true) is non-standard but works in some browsers
+    window.location.reload(true);
+    
+    // Fallback com cache buster
+    setTimeout(() => {
+      window.location.href = window.location.href.split('?')[0] + '?refresh=' + Date.now();
+    }, 500);
+  };
+
   const systems: SystemButton[] = [
     {
       id: 'nebula',
@@ -107,12 +130,21 @@ const App: React.FC = () => {
           </p>
         </div>
         
-        <div className="mt-6 md:mt-0 text-right">
-          <div className="flex items-center justify-end space-x-3 text-3xl font-mono text-white mb-1">
-            <Clock className="w-8 h-8 text-gray-500" />
-            <span>{formattedTime}</span>
+        <div className="mt-6 md:mt-0 flex flex-col items-end">
+          <div className="flex items-center space-x-4 mb-2">
+            <button 
+              onClick={hardRefresh}
+              className="p-3 bg-[#0f2447cc] border border-[#2a4e8a] rounded-2xl hover:bg-[#2a4e8a] transition-all active:scale-95 shadow-lg group"
+              title="Atualizar Portal"
+            >
+              <RefreshCcw className="w-6 h-6 text-blue-400 group-hover:rotate-180 transition-transform duration-500" />
+            </button>
+            <div className="flex items-center space-x-3 text-3xl font-mono text-white">
+              <Clock className="w-8 h-8 text-gray-500" />
+              <span>{formattedTime}</span>
+            </div>
           </div>
-          <p className="text-sm text-gray-500 uppercase tracking-widest">
+          <p className="text-sm text-gray-500 uppercase tracking-widest text-right">
             {formattedDate}
           </p>
         </div>
