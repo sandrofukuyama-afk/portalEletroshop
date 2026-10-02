@@ -21,7 +21,7 @@ self.addEventListener("push", (event) => {
       tag: data.tag || "nebula-qr",
       renotify: true,
       requireInteraction: true,
-      data: { url: "/?open=nebula" },
+      data: { url: "/?open=nebula" + (data.triggerId ? "&qr_trigger=" + encodeURIComponent(data.triggerId) : "") },
     })
   );
 });

@@ -292,9 +292,13 @@
 <script>
   // ===== Alertas do Nebula (push) =====
   // Aberto pelo toque na notificação → vai direto para o Nebula (ele busca o QR pendente ao abrir)
-  if (new URLSearchParams(location.search).get('open') === 'nebula') {
-    location.replace('https://www.nebulapos.app/');
-  }
+  (function(){
+    const q = new URLSearchParams(location.search);
+    if (q.get('open') === 'nebula') {
+      const trig = q.get('qr_trigger');
+      location.replace('https://www.nebulapos.app/' + (trig ? '?qr_trigger=' + encodeURIComponent(trig) : ''));
+    }
+  })();
 
   const NEBULA_SUPABASE_URL = 'https://uylmlfeixctlvuhhnltz.supabase.co';
   const NEBULA_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5bG1sZmVpeGN0bHZ1aGhubHR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMjEwMzEsImV4cCI6MjA4MTc5NzAzMX0.4_VyGEqXYVAy4JSJUe1xZwgiGAxsJhUHpfSbNEsIeyE';
