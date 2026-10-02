@@ -466,6 +466,9 @@
     btn.style.pointerEvents = 'none';
     const label = btn.querySelector('span');
     if (label) label.textContent = 'Reiniciando...';
+    const reloadNow = () => window.location.replace(window.location.origin + '/?refresh=' + Date.now());
+    // Segurança: se alguma limpeza travar no iPad, recarrega mesmo assim
+    setTimeout(reloadNow, 3000);
 
     try { sessionStorage.clear(); } catch (e) {}
     if ('caches' in window) {
@@ -493,7 +496,7 @@
     }
     
     // Recarrega com endereço novo para o Safari/iOS não reaproveitar a página em cache
-    window.location.replace(window.location.origin + '/?refresh=' + Date.now());
+    reloadNow();
   }
 
   // Remove o ?refresh= da barra depois de reiniciar
