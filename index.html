@@ -141,6 +141,31 @@
       width: 24px;
       height: 24px;
     }
+    .refresh-btn.on { border-color:#22d3ee; color:#22d3ee; }
+    .push-overlay{
+      position:fixed; inset:0; background:rgba(0,0,0,.6); display:none;
+      align-items:center; justify-content:center; z-index:50; padding:20px;
+    }
+    .push-overlay.open{ display:flex; }
+    .push-panel{
+      width:100%; max-width:440px; background:#0f2447; border:1px solid var(--stroke);
+      border-radius:var(--radius); box-shadow:var(--shadow); padding:22px; user-select:text;
+    }
+    .push-panel h3{ margin:0 0 6px; font-size:18px; }
+    .push-panel p{ margin:0 0 14px; color:var(--muted); font-size:13px; line-height:1.4; }
+    .push-panel label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 6px; }
+    .push-panel input[type=text]{
+      width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--stroke);
+      background:#071a33; color:#fff; font-size:16px; font-weight:700; text-transform:uppercase;
+    }
+    .push-panel .check{ display:flex; gap:10px; align-items:flex-start; font-size:13px; margin-top:12px; color:#fff; }
+    .push-panel .row{ display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; }
+    .push-panel button{
+      flex:1; padding:12px; border-radius:12px; border:1px solid var(--stroke);
+      background:rgba(255,255,255,.06); color:#fff; font-weight:800; font-size:13px; -webkit-appearance:none;
+    }
+    .push-panel button.primary{ background:#22d3ee; color:#04121f; border-color:#22d3ee; }
+    .push-panel .status{ margin-top:14px; font-size:12px; color:var(--muted); min-height:16px; word-break:break-word; }
     @media (max-width:900px){
       .grid{grid-template-columns:1fr}
       .full{grid-column:auto}
@@ -156,6 +181,12 @@
       <div class="subtitle">Sistemas de balcão e atendimento</div>
     </div>
     <div style="display: flex; gap: 12px; align-items: flex-end;">
+      <button class="refresh-btn" id="pushBell" onclick="openPushPanel()" title="Alertas do Nebula">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </button>
       <button class="refresh-btn" onclick="hardRefresh()" title="Atualizar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M23 4v6h-6"></path>
@@ -238,7 +269,179 @@
   </footer>
 </div>
 
+<div class="push-overlay" id="pushOverlay" onclick="if(event.target===this)closePushPanel()">
+  <div class="push-panel">
+    <h3>Alertas do Nebula</h3>
+    <p>Recebe um alerta neste aparelho quando o RepairTech/IPS enviar um QR. Ao tocar no alerta, o Nebula abre com o pagamento para confirmar.</p>
+    <label for="pushTerminal">Código do terminal (o mesmo do Nebula, ex: IPAD-01)</label>
+    <input type="text" id="pushTerminal" placeholder="IPAD-01" autocomplete="off">
+    <div class="check">
+      <input type="checkbox" id="pushUnassigned">
+      <span>Receber também QRs sem terminal definido</span>
+    </div>
+    <div class="row">
+      <button class="primary" id="pushEnableBtn" onclick="enablePortalPush()">Ativar alertas</button>
+      <button onclick="testPortalPush()">Testar</button>
+      <button onclick="disablePortalPush()">Desativar</button>
+    </div>
+    <div class="row" style="margin-top:10px"><button onclick="closePushPanel()">Fechar</button></div>
+    <div class="status" id="pushStatus"></div>
+  </div>
+</div>
+
 <script>
+  // ===== Alertas do Nebula (push) =====
+  // Aberto pelo toque na notificação → vai direto para o Nebula (ele busca o QR pendente ao abrir)
+  if (new URLSearchParams(location.search).get('open') === 'nebula') {
+    location.replace('https://www.nebulapos.app/');
+  }
+
+  const NEBULA_SUPABASE_URL = 'https://uylmlfeixctlvuhhnltz.supabase.co';
+  const NEBULA_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5bG1sZmVpeGN0bHZ1aGhubHR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMjEwMzEsImV4cCI6MjA4MTc5NzAzMX0.4_VyGEqXYVAy4JSJUe1xZwgiGAxsJhUHpfSbNEsIeyE';
+  const NEBULA_VAPID_PUBLIC_KEY = 'BPcXRhwLrHMr1SY25LI6soQ-rOg5a7ybwfHbJHSzwTSCdhrz6wdnk1hXqSGeRv01ijlz_Lrc-m-s-FA84fHBECE';
+  const NEBULA_STORE_ID = 'store-001';
+  const PUSH_SW = '/portal-sw.js';
+  const LS_TERMINAL = 'PORTAL_PUSH_TERMINAL';
+  const LS_UNASSIGNED = 'PORTAL_PUSH_UNASSIGNED';
+
+  let portalPushReg = null;
+
+  function normalizeTerminalId(v){
+    return String(v||'').trim().replace(/\s*-\s*/g,'-').replace(/\s+/g,'-').replace(/[^a-zA-Z0-9._:-]/g,'').toUpperCase().slice(0,64);
+  }
+  function vapidKeyBytes(){
+    const b64 = NEBULA_VAPID_PUBLIC_KEY;
+    const raw = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g,'+').replace(/_/g,'/'));
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function withTimeout(promise, ms, step){
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('Tempo esgotado: ' + step)), ms);
+      promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+    });
+  }
+  function setPushStatus(msg){ document.getElementById('pushStatus').textContent = msg || ''; }
+  function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function lsSet(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+
+  async function refreshBell(){
+    try {
+      const sub = portalPushReg ? await portalPushReg.pushManager.getSubscription() : null;
+      document.getElementById('pushBell').classList.toggle('on', !!sub && Notification.permission === 'granted');
+      return sub;
+    } catch(e){ return null; }
+  }
+
+  function waitUntilActive(reg){
+    if (reg.active) return Promise.resolve(reg);
+    const w = reg.installing || reg.waiting;
+    if (!w) return navigator.serviceWorker.ready;
+    return new Promise(resolve => {
+      const check = () => { if (w.state === 'activated') resolve(reg); };
+      w.addEventListener('statechange', check); check();
+    });
+  }
+
+  // Prepara o serviço na abertura do portal: no iPad o subscribe precisa ser a 1ª ação do toque
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register(PUSH_SW, { scope: '/' })
+      .then(waitUntilActive)
+      .then(reg => { portalPushReg = reg; refreshBell(); })
+      .catch(e => console.warn('portal push sw', e));
+  }
+
+  async function saveSubscription(sub){
+    const json = sub.toJSON();
+    const res = await fetch(NEBULA_SUPABASE_URL + '/rest/v1/push_subscriptions?on_conflict=endpoint', {
+      method: 'POST',
+      headers: {
+        'apikey': NEBULA_ANON_KEY,
+        'Authorization': 'Bearer ' + NEBULA_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({
+        endpoint: sub.endpoint,
+        p256dh: json.keys && json.keys.p256dh,
+        auth: json.keys && json.keys.auth,
+        store_id: NEBULA_STORE_ID,
+        terminal_id: normalizeTerminalId(lsGet(LS_TERMINAL)) || null,
+        accept_unassigned: lsGet(LS_UNASSIGNED) === '1',
+        user_agent: ('PORTAL ' + navigator.userAgent).slice(0, 300),
+        updated_at: new Date().toISOString()
+      })
+    });
+    if (!res.ok) throw new Error('Falha ao salvar (' + res.status + ')');
+  }
+
+  function openPushPanel(){
+    document.getElementById('pushTerminal').value = lsGet(LS_TERMINAL) || '';
+    document.getElementById('pushUnassigned').checked = lsGet(LS_UNASSIGNED) === '1';
+    refreshBell().then(sub => setPushStatus(sub ? 'Alertas ATIVOS neste aparelho.' : (portalPushReg ? 'Alertas desativados.' : 'Preparando serviço... aguarde alguns segundos.')));
+    document.getElementById('pushOverlay').classList.add('open');
+  }
+  function closePushPanel(){ document.getElementById('pushOverlay').classList.remove('open'); }
+
+  async function enablePortalPush(){
+    const terminal = normalizeTerminalId(document.getElementById('pushTerminal').value);
+    const unassigned = document.getElementById('pushUnassigned').checked;
+    if (!terminal) { setPushStatus('Informe o código do terminal (ex: IPAD-01).'); return; }
+    if (!portalPushReg || !('PushManager' in window)) {
+      setPushStatus('Serviço ainda não está pronto ou não é suportado. Abra o portal pelo ícone da Tela de Início, aguarde 5 segundos e tente de novo.');
+      return;
+    }
+    lsSet(LS_TERMINAL, terminal);
+    lsSet(LS_UNASSIGNED, unassigned ? '1' : '0');
+    setPushStatus('Ativando...');
+    const reg = portalPushReg;
+    try {
+      // 1ª chamada assíncrona do toque (exigência do Safari/iPad); pede a permissão se necessário
+      let sub = null;
+      try {
+        sub = await withTimeout(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKeyBytes() }), 30000, 'inscrição');
+      } catch (e) {
+        sub = await withTimeout(reg.pushManager.getSubscription(), 8000, 'conferir inscrição').catch(() => null);
+        if (!sub) throw e;
+      }
+      await withTimeout(saveSubscription(sub), 15000, 'salvar');
+      await refreshBell();
+      setPushStatus('Alertas ativados para ' + terminal + (unassigned ? ' (e QRs sem terminal).' : '.'));
+    } catch (e) {
+      setPushStatus('Erro: ' + (e && e.message ? e.message : e) + ' [permissão=' + (window.Notification ? Notification.permission : '-') + ']');
+    }
+  }
+
+  async function testPortalPush(){
+    try {
+      if (!portalPushReg) throw new Error('serviço não está pronto');
+      await portalPushReg.showNotification('Nebula POS • Teste', { body: 'Se você está vendo isto, os alertas funcionam neste aparelho.', tag: 'nebula-test', data: { url: '/?open=nebula' } });
+      setPushStatus('Notificação de teste enviada.');
+    } catch (e) {
+      setPushStatus('Erro no teste: ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  async function disablePortalPush(){
+    try {
+      const sub = portalPushReg ? await portalPushReg.pushManager.getSubscription() : null;
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe().catch(() => {});
+        await fetch(NEBULA_SUPABASE_URL + '/rest/v1/push_subscriptions?endpoint=eq.' + encodeURIComponent(endpoint), {
+          method: 'DELETE',
+          headers: { 'apikey': NEBULA_ANON_KEY, 'Authorization': 'Bearer ' + NEBULA_ANON_KEY }
+        }).catch(() => {});
+      }
+      await refreshBell();
+      setPushStatus('Alertas desativados.');
+    } catch (e) {
+      setPushStatus('Erro: ' + (e && e.message ? e.message : e));
+    }
+  }
+  // ===== fim Alertas do Nebula =====
+
   function pad(n){return String(n).padStart(2,'0')}
   function tick(){
     const d=new Date()
@@ -260,6 +463,9 @@
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (let registration of registrations) {
+          // Mantém o serviço de alertas do Nebula (removê-lo desligaria as notificações)
+          const sw = registration.active || registration.waiting || registration.installing;
+          if (sw && sw.scriptURL && sw.scriptURL.indexOf('/portal-sw.js') !== -1) continue;
           await registration.unregister();
         }
       } catch (e) {
