@@ -350,13 +350,18 @@
     });
   }
 
-  // Prepara o serviço na abertura do portal: no iPad o subscribe precisa ser a 1ª ação do toque
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register(PUSH_SW, { scope: '/' })
+  // "Desativar" remove o serviço de alertas por completo (portal volta a ser como antes)
+  const LS_PUSH_OFF = 'PORTAL_PUSH_OFF';
+  function preparePushService(){
+    if (!('serviceWorker' in navigator)) return Promise.resolve(null);
+    return navigator.serviceWorker.register(PUSH_SW, { scope: '/' })
       .then(waitUntilActive)
-      .then(reg => { portalPushReg = reg; refreshBell(); })
-      .catch(e => console.warn('portal push sw', e));
+      .then(reg => { portalPushReg = reg; refreshBell(); return reg; })
+      .catch(e => { console.warn('portal push sw', e); return null; });
   }
+
+  // Prepara o serviço na abertura do portal: no iPad o subscribe precisa ser a 1ª ação do toque
+  if (lsGet(LS_PUSH_OFF) !== '1') preparePushService();
 
   async function saveSubscription(sub){
     const json = sub.toJSON();
@@ -394,6 +399,13 @@
     const terminal = normalizeTerminalId(document.getElementById('pushTerminal').value);
     const unassigned = document.getElementById('pushUnassigned').checked;
     if (!terminal) { setPushStatus('Informe o código do terminal (ex: IPAD-01).'); return; }
+    if (lsGet(LS_PUSH_OFF) === '1' && !portalPushReg) {
+      // Estava totalmente desativado: liga o serviço; a inscrição precisa de um novo toque
+      lsSet(LS_PUSH_OFF, '0');
+      setPushStatus('Preparando o serviço de alertas... aguarde 5 segundos e toque em "Ativar alertas" de novo.');
+      preparePushService();
+      return;
+    }
     if (!portalPushReg || !('PushManager' in window)) {
       setPushStatus('Serviço ainda não está pronto ou não é suportado. Abra o portal pelo ícone da Tela de Início, aguarde 5 segundos e tente de novo.');
       return;
@@ -440,8 +452,15 @@
           headers: { 'apikey': NEBULA_ANON_KEY, 'Authorization': 'Bearer ' + NEBULA_ANON_KEY }
         }).catch(() => {});
       }
-      await refreshBell();
-      setPushStatus('Alertas desativados.');
+      // Remove também o serviço (service worker) para o portal ficar exatamente como antes
+      lsSet(LS_PUSH_OFF, '1');
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      } catch (e) {}
+      portalPushReg = null;
+      document.getElementById('pushBell').classList.remove('on');
+      setPushStatus('Alertas e serviço desativados. Toque em "Reiniciar" no topo do portal e teste a impressão.');
     } catch (e) {
       setPushStatus('Erro: ' + (e && e.message ? e.message : e));
     }
@@ -487,7 +506,7 @@
         for (let registration of registrations) {
           // Mantém o serviço de alertas do Nebula (removê-lo desligaria as notificações)
           const sw = registration.active || registration.waiting || registration.installing;
-          if (sw && sw.scriptURL && sw.scriptURL.indexOf('/portal-sw.js') !== -1) continue;
+          if (lsGet(LS_PUSH_OFF) !== '1' && sw && sw.scriptURL && sw.scriptURL.indexOf('/portal-sw.js') !== -1) continue;
           await registration.unregister();
         }
       } catch (e) {
